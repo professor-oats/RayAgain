@@ -1,0 +1,5 @@
+The hit_record is to avoid a bunch of arguments so we can stuff whatever info we want in there. You can use arguments instead of an encapsulated type, it’s just a matter of taste. Hittables and materials need to be able to reference the other's type in code so there is some circularity of the references. In C++ we add the line class material; to tell the compiler that material is a class that will be defined later. Since we're just specifying a pointer to the class, the compiler doesn't need to know the details of the class, solving the circular reference issue. 
+
+hit_record is just a way to stuff a bunch of arguments into a class so we can send them as a group. When a ray hits a surface (a particular sphere for example), the material pointer in the hit_record will be set to point at the material pointer the sphere was given when it was set up in main() when we start. When the ray_color() routine gets the hit_record it can call member functions of the material pointer to find out what ray, if any, is scattered.
+
+To achieve this, hit_record needs to be told the material that is assigned to the sphere. 

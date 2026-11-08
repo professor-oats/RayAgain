@@ -1,0 +1,14 @@
+ Now our final feature: defocus blur. Note, photographers call this depth of field, so be sure to only use the term defocus blur among your raytracing friends.
+
+The reason we have defocus blur in real cameras is because they need a big hole (rather than just a pinhole) through which to gather light. A large hole would defocus everything, but if we stick a lens in front of the film/sensor, there will be a certain distance at which everything is in focus. Objects placed at that distance will appear in focus and will linearly appear blurrier the further they are from that distance. You can think of a lens this way: all light rays coming from a specific point at the focus distance — and that hit the lens — will be bent back to a single point on the image sensor.
+
+We call the distance between the camera center and the plane where everything is in perfect focus the focus distance. Be aware that the focus distance is not usually the same as the focal length — the focal length is the distance between the camera center and the image plane. For our model, however, these two will have the same value, as we will put our pixel grid right on the focus plane, which is focus distance away from the camera center.
+
+In a physical camera, the focus distance is controlled by the distance between the lens and the film/sensor. That is why you see the lens move relative to the camera when you change what is in focus (that may happen in your phone camera too, but the sensor moves). The “aperture” is a hole to control how big the lens is effectively. For a real camera, if you need more light you make the aperture bigger, and will get more blur for objects away from the focus distance. For our virtual camera, we can have a perfect sensor and never need more light, so we only use an aperture when we want defocus blur.
+
+Without defocus blur, all scene rays originate from the camera center (or lookfrom). In order to accomplish defocus blur, we construct a disk centered at the camera center. The larger the radius, the greater the defocus blur. You can think of our original camera as having a defocus disk of radius zero (no blur at all), so all rays originated at the disk center (lookfrom). 
+
+So, how large should the defocus disk be? Since the size of this disk controls how much defocus blur we get, that should be a parameter of the camera class. We could just take the radius of the disk as a camera parameter, but the blur would vary depending on the projection distance. A slightly easier parameter is to specify the angle of the cone with apex at viewport center and base (defocus disk) at the camera center. This should give you more consistent results as you vary the focus distance for a given shot.
+
+Since we'll be choosing random points from the defocus disk, we'll need a function to do that: random_in_unit_disk(). This function works using the same kind of method we use in random_unit_vector(), just for two dimensions.
+

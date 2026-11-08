@@ -1,0 +1,1 @@
+For a moving sphere, we want the bounds of its entire range of motion. To do this, we can take the box of the sphere at time=0, and the box of the sphere at time=1, and compute the box around those two boxes. 

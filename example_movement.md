@@ -1,0 +1,1 @@
+The code below takes the example diffuse spheres from the scene at the end of the last book, and makes them move during the image render. Each sphere moves from its center C at time t=0 to C+(0,r/2,0) at time t=1: 

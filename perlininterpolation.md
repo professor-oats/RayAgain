@@ -1,0 +1,1 @@
+The output of the Perlin interpolation function can return negative values. These negative values will be passed to our linear_to_gamma() color function, which expects only positive inputs. To mitigate this, we'll map the [−1,+1] range of values to [0,1]. 

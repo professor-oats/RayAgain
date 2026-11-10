@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<meta name="author" content="Nathan Reed"/>
+	<meta name="description" content="Pixels and polygons and shaders, oh my!"/>
+	<meta name="keywords" content="graphics,coding,programming,shader,rendering,math,directx,opengl,c++,gpu,pbr,brdf,vector,matrix"/>
+	<meta name="HandheldFriendly" content="True"/>
+	<meta name="MobileOptimized" content="320"/>
+	<meta name="viewport" content="width=device-width,initial-scale=1"/>
+	<link rel="stylesheet" type="text/css" href="/default.css"/>
+	<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Noto+Serif:400,400i,700,700i|Cabin:400,400i,700,700i|Roboto+Mono:400,400i"/>
+	<link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16x16.png"/>
+	<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32x32.png"/>
+	<link rel="icon" type="image/png" sizes="48x48" href="/img/favicon-48x48.png"/>
+	<link rel="icon" type="image/png" sizes="192x192" href="/img/favicon-192x192.png"/>
+	<link rel="canonical" href="/blog/antialiasing-to-splat-or-not/"/>
+	<link rel="alternate" type="application/rss+xml" href="/feed/" title="Nathan Reed’s coding blog"/>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.0/dist/katex.min.css" integrity="sha384-t5CR+zwDAROtph0PXGte6ia8heboACF9R5l/DiY+WZ3P2lxNgvJkQk5n7GPvLMYw" crossorigin="anonymous"/>
+	<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.0/dist/katex.min.js" integrity="sha384-FaFLTlohFghEIZkw6VGwmf9ISTubWAVYW8tG8+w2LAIftJEULZABrF9PPFv+tVkH" crossorigin="anonymous"></script>
+	<script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.0/dist/contrib/auto-render.min.js" integrity="sha384-bHBqxz8fokvgoJ/sc17HODNxa42TlaEhB+w8ZJXTc2nZf1VgEaFZeZvT4Mznfz0v" crossorigin="anonymous" onload="renderMath();"></script>
+	<title>Antialiasing: To Splat Or Not – Nathan Reed’s coding blog</title>
+</head>
+<body>
+	<div id="footer-pusher">
+		<header id="site-header">
+			<div id="site-header-aligner">
+				<h1><a href="/">Nathan Reed</a></h1>
+				<nav>
+					<a href="/" class="active">Blog</a>
+					<a href="/made/">Stuff I’ve Made</a>
+					<a href="/talks/">Talks</a>
+					<a href="/about/">About Me</a>
+				</nav>
+			</div>
+		</header>
+		<div id="content">
+			<nav class="pagination">
+<a class="page-left" href="/blog/the-buttered-toast-model-of-radiometry/">The Buttered-Toast Model Of Radiometry</a><a class="page-right" href="/blog/data-oriented-hash-table/">Data-Oriented Hash Table</a>		</nav>
+
+	<article>
+			<header>
+		<h1>Antialiasing: To Splat Or Not</h1>
+			<p>November 15, 2014 · <a href="/blog/category/coding/">Coding</a>, <a href="/blog/category/eye-candy/">Eye Candy</a>, <a href="/blog/category/graphics/">Graphics</a> · <a href="/blog/antialiasing-to-splat-or-not/#comments" class="disqus-comment-count" data-disqus-identifier="/blog/antialiasing-to-splat-or-not/">Comments</a></p>
+	</header>
+
+		<p><em>Note: this post is adapted from an answer I wrote for the Computer Graphics StackExchange beta,
+which was shut down a few months ago.  A dump of all the CGSE site data can be found
+<a href="http://area51.stackexchange.com/proposals/61961/computer-graphics">on Area 51</a>.</em></p>
+<p>To perform antialiasing in synthetic images (whether real-time or offline), we distribute samples
+over the image plane, and ensure that each pixel gets contributions from many samples with different
+subpixel locations.  This approximates the result of applying a low-pass kernel to the underlying
+infinite-resolution image—ideally resulting in a finite-resolution image without objectionable
+artifacts like jaggies, Moiré patterns, ringing, or excessive blurring.</p>
+<!--more-->
+<p>In treatments of this process that I’ve read (such as in <a href="http://www.pbrt.org/">PBR</a>) we
+are told to do this by a method that I’ll call <em>splatting</em>: generating a collection of
+samples uniformly distributed over the image rectangle, then for each sample, accumulating its color
+onto all nearby pixels, with weights according to the distance between the sample and the pixel
+centers (using any desired antialiasing kernel as a falloff function).</p>
+<figure alt="Diagram of the splatting method" class="invert-when-dark" title="Diagram of the splatting method" >
+<img src="splatting.png"/>      <figcaption><p>Each sample (small black dot) contributes to several nearby pixels (big colored circles)</p></figcaption>
+    </figure>
+
+<p>I wondered: couldn’t we do this a simpler way?  Instead of splatting each sample across all nearby
+pixels, couldn’t we just generate, for each pixel, an independent set of samples (using any desired
+antialiasing kernel for the distribution), and have each of those samples contribute only to the
+individual pixel that generated it?</p>
+<figure alt="Diagram of the non-splatting method" class="invert-when-dark" title="Diagram of the non-splatting method" >
+<img src="non-splatting.png"/>      <figcaption><p>Each pixel (big colored circle) generates several samples (small colored dots) around it;
+each sample contributes only to the pixel that generated it</p></figcaption>
+    </figure>
+
+<p>Formally, both approaches should converge to the same image in the limit that the number of samples
+goes to infinity; they both approximate the same low-pass kernel applied to the infinite-resolution
+image.  But using the non-splatting approach would slightly simplify the problem of building an efficient
+multicore renderer, since the relationship between samples and pixels would be many-to-one instead
+of many-to-many.  I also wondered if there might be image-quality implications—the splatting
+approach, by reusing samples, introduces potentially-unwanted correlations between nearby pixels.</p>
+<p>I asked about this on the then-active CGSE site, but no one had a ready answer, so I decided I
+had to do some tests of my own.  I concocted a simple 2D mathematical function with a wide range of
+frequencies (to stand in for rendering a scene), and wrote a program to evaluate and filter it,
+using a few different kernels, with either the splatting or the non-splatting method as defined
+above.  I found some interesting results.</p>
+<h2 id="the-test"><a href="#the-test" title="Permalink to this section">The Test</a></h2>
+<p>For reference, <a href="https://gist.github.com/Reedbeta/893b63390160e33ddb3c">my source code is here</a>—Python
+3.4 with Pillow and numpy.  This is purely intended to test image quality, not
+performance.  And I’m not even measuring the image quality scientifically—just eyeballing it.</p>
+<p>To start with, here’s the image I’m sampling. (BTW, it may help to open these images in a new tab,
+or download and view them in an external program, to ensure your browser isn’t resizing them and
+doing something weird.)</p>
+<p><img alt="2px Lanczos, 1M samples per pixel" src="ref-1Mspp-lanczos-2.0px.png" title="2px Lanczos, 1M samples per pixel" /></p>
+<p>The function has infinitely-sharp edges between the black and white bands, and the spatial frequency of the
+edges is low near the bottom of the image and increases toward the top.  This image was generated with
+<a href="one-million-samples.jpg">one million samples per pixel</a> and a 2px-radius Lanczos filter, so I figure it’s about as close to a
+perfectly filtered image as you’re going to get, although it still shows some aliasing in the
+midrange frequencies.</p>
+<p>(By the way, I also tried a 3px Lanczos filter, but it gave very visible ringing around the
+edges in the lower half.)</p>
+<p>Here’s the same function, evaluated with just one measly sample at each pixel center, no attempt at
+antialiasing:</p>
+<p><img alt="1 sample per pixel" src="aa-1spp-center.png" title="1 sample per pixel" /></p>
+<p>All sorts of jaggies and Moiré patterns, as you’d expect.</p>
+<h2 id="box-filter"><a href="#box-filter" title="Permalink to this section">Box Filter</a></h2>
+<p>Okay, now for the interesting part.  Here’s the function evaluated with just 16 samples per pixel
+using the splatting method with a 2px-radius box filter (so 4px diameter; I’m deliberately using a
+wider filter here than you’d use in real life, to exacerbate the effects).</p>
+<p>Note that for the splatting method, when I say “16 samples per pixel” I mean that the <em>total</em>
+number of samples was 16 times the number of pixels in the image.  However, because each sample splats
+onto multiple pixels, the number of samples contributing to any individual pixel is <em>more</em>
+than 16.</p>
+<p><img alt="Splatting, 2px box filter, 16 spp" src="test-box-2.0px-splat.png" title="Splatting, 2px box filter, 16 spp" /></p>
+<p>And here’s the non-splatting method, with the same parameters.  Here, each pixel received
+contributions from exactly 16 samples, distributed in a 2px-radius box around the pixel center.</p>
+<p><img alt="Non-splatting, 2px box filter, 16 spp" src="test-box-2.0px-nosplat.png" title="Non-splatting, 2px box filter, 16 spp" /></p>
+<p>Comparing these two, we can see several interesting features:</p>
+<ul>
+<li>The overall noise <em>amplitude</em> in the upper part of the image is about the same between the two methods.</li>
+<li>However, the noise <em>frequency</em> is quite different!  Without splatting, you get high-frequency noise
+    because each pixel’s samples are totally independent.  With splatting, the samples used for nearby
+    pixels are correlated (in other words, the noise is filtered by the antialiasing kernel), so you get lower-frequency
+    noise.</li>
+<li>The aliasing of the midrange frequencies that are not properly filtered looks about the same
+    between the two methods.</li>
+<li>In the lower part of the image, the filtered edges look quite smooth (albeit blurry) with splatting, but rather
+    noisy without.  This is presumably due to the greater number of contributions per pixel from
+    sample reuse when splatting.</li>
+</ul>
+<h2 id="gaussian-filter"><a href="#gaussian-filter" title="Permalink to this section">Gaussian Filter</a></h2>
+<p>In a real rendering task, you probably wouldn’t use a box filter, as there are much better
+choices available!  Let’s take a look at what happens with a Gaussian filter
+with sigma = 0.5px (total radius 3 sigma, or 1.5 px), again with 16 spp.  Splatting:</p>
+<p><img alt="Splatting, Gaussian filter, sigma = 0.5px, 16 spp" src="test-gaussian-1.5px-splat.png" title="Splatting, Gaussian filter, sigma = 0.5px, 16 spp" /></p>
+<p>And non-splatting:</p>
+<p><img alt="Non-splatting, Gaussian filter, sigma = 0.5px, 16 spp" src="test-gaussian-1.5px-nosplat.png" title="Non-splatting, Gaussian filter, sigma = 0.5px, 16 spp" /></p>
+<p>The comparison is qualitatively very similar to the box filter: again, splatting gives lower-frequency
+noise in the upper part and better-filtered edges in the lower part. This Gaussian is actually a
+rather nice filter that you might use in real life; it’s a good balance between maintaining sharpness
+and fighting aliasing.</p>
+<h2 id="lanczos-filter"><a href="#lanczos-filter" title="Permalink to this section">Lanczos Filter</a></h2>
+<p>There’s just one more comparison I want to make, and that’s with a Lanczos filter.  Splatting:</p>
+<p><img alt="Splatting, 2px Lanczos filter, 16 spp" src="test-lanczos-2.0px-splat.png" title="Splatting, 2px Lanczos filter, 16 spp" /></p>
+<p>And non-splatting:</p>
+<p><img alt="Non-splatting, 2px Lanczos filter, 16 spp" src="test-lanczos-2.0px-nosplat.png" title="Non-splatting, 2px Lanczos filter, 16 spp" /></p>
+<p>Here the result is a bit different!  The noise <em>frequency</em> doesn’t look much lower with splatting (due
+to the sharpening properties of the Lanczos filter?) but the noise <em>amplitude</em> is clearly lower—the opposite
+of what happened before.</p>
+<p>I’m not entirely sure what’s going on here, but it may be due to the fact that the Lanczos filter
+can’t easily be importance-sampled.  For the box and Gaussian filters, in the non-splatting case I generated
+samples that were distributed to match the filter, and therefore all weighted evenly.  For the
+Lanczos filter, this is a great deal more difficult and I didn’t attempt it, so I just
+generated uniform samples and weighted them by the kernel.  This is well-known to increase variance,
+and may account for the increased noise in the non-splatting image.  Splatting doesn’t have this issue,
+since it simply evaluates the kernel between sample points and pixel centers—no importance-sampling
+needed.</p>
+<p>After considering these comparisons (and more) I’m coming down on the side of splatting—PBR was
+right after all! :)  It’s a bit more complicated to code, and probably slightly slower when it comes
+to accumulating samples—but it seems to consistently give higher-quality images for a given sample
+count, and it’s friendlier to non-importance-sampleable filters like Lanczos.  In a renderer of any
+sophistication, the bottleneck is going to be the per-sample lighting evaluation, not accumulating
+samples on the image—so anything that gets you better image quality per sample is a win.</p>
+<p><strong>Update:</strong> Matthäus Chajdas <a href="https://twitter.com/NIV_Anteru/status/534054763881844737">brought to my attention</a>
+a paper on this topic, <a href="http://lgdv.cs.fau.de/publications/publication/Pub.2006.tech.IMMD.IMMD9.filter/">Filter Importance Sampling</a>,
+from 2006.  They propose the same “non-splatting” method that I used here—independent samples per
+pixel, distributed according to the desired antialiasing kernel—but they went ahead and did
+(approximate) importance sampling for any kernel, including ones with negative lobes such as Mitchell
+and Lanczos.</p>
+<p>They find that in the presence of additional random sampling in the generation of the image (light
+sampling, BRDF sampling, etc.) the non-splatting method produces <em>better</em> images, due
+to weighting each sample equally.  The splatting method can increase variance because, for example,
+a sample with a large light value can end up with a high weight in one pixel and a low weight in the
+next pixel, producing fireflies.</p>
+<p>So it seems that my test case was too simplistic, and using a function that can be exactly evaluated
+as a stand-in for rendering an image leads to a different conclusion from actually rendering an image!</p>
+			<footer>
+						<nav class="pagination">
+<a class="page-left" href="/blog/the-buttered-toast-model-of-radiometry/">The Buttered-Toast Model Of Radiometry</a><a class="page-right" href="/blog/data-oriented-hash-table/">Data-Oriented Hash Table</a>		</nav>
+
+					<hr />
+					<h2 id="comments"><span class="disqus-comment-count" data-disqus-identifier="/blog/antialiasing-to-splat-or-not/">Comments</span> on “Antialiasing: To Splat Or Not”</h2>
+					<div id="disqus_thread"></div>
+					<script>
+						var disqus_config = function () {
+							this.page.url = "https://www.reedbeta.com/blog/antialiasing-to-splat-or-not/";
+							this.page.identifier = "/blog/antialiasing-to-splat-or-not/";
+							this.page.title = "Antialiasing: To Splat Or Not";
+						};
+						(function() {
+							var d = document, s = d.createElement('script');
+							s.src = 'https://reedbeta.disqus.com/embed.js';
+							s.setAttribute('data-timestamp', +new Date());
+							d.body.appendChild(s);
+						})();
+					</script>
+					<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+			</footer>
+	</article>
+		</div>
+		<div id="sidebar">
+			<h1>Subscribe</h1>
+			<ul>
+				<li>
+					<a href="/feed/" title="RSS feed">
+						<img class="feed-button" src="/img/rss-icon.png" alt="RSS" />
+						RSS
+					</a>
+				</li>
+			</ul>
+			<h1>Recent Posts</h1>
+			<ul>
+					<li><a href="/blog/reading-veach-thesis-2/">Reading Veach’s Thesis, Part 2</a></li>
+					<li><a href="/blog/reading-veach-thesis/">Reading Veach’s Thesis</a></li>
+					<li><a href="/blog/texture-gathers-and-coordinate-precision/">Texture Gathers and Coordinate Precision</a></li>
+					<li><a href="/made/git-partial-submodule/">git-partial-submodule</a></li>
+					<li><a href="/blog/slope-space-in-brdf-theory/">Slope Space in BRDF Theory</a></li>
+					<li><a href="/blog/hash-functions-for-gpu-rendering/">Hash Functions for GPU Rendering</a></li>
+				<li><a class="page-right" href="/all/">All Posts</a></li>
+			</ul>
+			<h1>Categories</h1>
+			<ul>
+					<li><a href="/blog/category/graphics">Graphics<span class="catnum">(32)</span></a></li>
+					<li><a href="/blog/category/coding">Coding<span class="catnum">(23)</span></a></li>
+					<li><a href="/blog/category/math">Math<span class="catnum">(21)</span></a></li>
+					<li><a href="/blog/category/gpu">GPU<span class="catnum">(15)</span></a></li>
+					<li><a href="/blog/category/physics">Physics<span class="catnum">(6)</span></a></li>
+					<li><a href="/blog/category/eye-candy">Eye Candy<span class="catnum">(4)</span></a></li>
+			</ul>
+		</div>
+	</div>
+	<footer id="site-footer">
+		<div id="site-footer-aligner">
+			© 2007–2025 by Nathan Reed.
+			Licensed <a rel="license" href="https://creativecommons.org/licenses/by/4.0/">CC-BY-4.0</a>.
+		</div>
+	</footer>
+<script id="dsq-count-scr" src="https://reedbeta.disqus.com/count.js" defer></script>	<script>
+		function renderMath()
+		{
+			renderMathInElement(document.body,
+				{ delimiters: [
+						{left: "$$", right: "$$", display: true},
+						{left: "$", right: "$", display: false},
+				]});
+		}
+	</script>
+</body>
+</html>

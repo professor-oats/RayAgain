@@ -1,0 +1,7 @@
+ Now that we have boxes, we need to rotate them a bit to have them match the real Cornell box. In ray tracing, this is usually done with an instance. An instance is a copy of a geometric primitive that has been placed into the scene. This instance is entirely independent of the other copies of the primitive and can be moved or rotated. In this case, our geometric primitive is our hittable box object, and we want to rotate it. This is especially easy in ray tracing because we don’t actually need to move objects in the scene; instead we move the rays in the opposite direction. For example, consider a translation (often called a move). We could take the pink box at the origin and add two to all its x components, or (as we almost always do in ray tracing) leave the box where it is, but in its hit routine subtract two off the x-component of the ray origin. 
+
+Instance Translation
+
+Whether you think of this as a move or a change of coordinates is up to you. The way to reason about this is to think of moving the incident ray backwards the offset amount, determining if an intersection occurs, and then moving that intersection point forward the offset amount.
+
+We need to move the intersection point forward the offset amount so that the intersection is actually in the path of the incident ray. If we forgot to move the intersection point forward then the intersection would be in the path of the offset ray, which isn't correct. Let's add the code to make this happen. 

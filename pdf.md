@@ -16,3 +16,11 @@ Probability a random tree is between H and H′=Bin Density⋅(H−H′)
 
 Indeed, with this continuous probability function, we can now say the likelihood that any given tree has a height that places it within any arbitrary span of multiple bins. This is a probability density function (henceforth PDF). In short, a PDF is a continuous function that can be integrated over to determine how likely a result is over an integral.
 
+In general, if we know the distribution of our random directions, we should use a PDF with the same distribution. This will lead to the fastest convergence. With that in mind, we'll create a pdf class that is responsible for generating random directions and determining the value of the PDF.
+
+From all of this, any pdf class should be responsible for
+
+    returning a random direction weighted by the internal PDF distribution, and
+    returning the corresponding PDF distribution value in that direction.
+
+The details of how this is done under the hood varies for pSurface and pLight, but that is exactly what class hierarchies were invented for! It’s never obvious what goes in an abstract class, so my approach is to be greedy and hope a minimal interface works, and for pdf this implies: 

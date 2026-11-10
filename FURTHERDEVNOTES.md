@@ -1,0 +1,1 @@
+We only need to add pdf_value() and random() to quad because we're using this to importance sample the light, and the only light we have in our scene is a quad. if you want other light geometries, or want to use a PDF with other objects, you'll need to implement the above functions for the corresponding classes. 

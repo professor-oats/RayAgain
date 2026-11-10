@@ -32,10 +32,14 @@ int main() {
     world.add(box1);
 
     // Box 2
-    shared_ptr<hittable> box2 = box(point3(0,0,0), point3(165,165,165), white);
-    box2 = make_shared<rotate_y>(box2, -18);
-    box2 = make_shared<translate>(box2, vec3(130,0,65));
-    world.add(box2);
+    //shared_ptr<hittable> box2 = box(point3(0,0,0), point3(165,165,165), white);
+    //box2 = make_shared<rotate_y>(box2, -18);
+    //box2 = make_shared<translate>(box2, vec3(130,0,65));
+    //world.add(box2);
+
+    // Glass Sphere
+    auto glass = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(190,90,190), 90, glass));
 
     // Light Sources
     auto empty_material = shared_ptr<material>();
@@ -45,7 +49,7 @@ int main() {
 
     cam.aspect_ratio      = 1.0;
     cam.image_width       = 600;
-    cam.samples_per_pixel = 1000;
+    cam.samples_per_pixel = 100;
     cam.max_depth         = 50;
     cam.background        = color(0,0,0);
 
